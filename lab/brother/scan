@@ -1,0 +1,74 @@
+#!/bin/bash
+
+
+
+EXT=$1
+
+if [ -z "$1" ]; then
+    echo "Error: Missing file extension."
+    exit 1
+fi
+
+
+SCAN_PATH="/srv/ftp/scans"
+
+
+# Find the next available filename
+N=1
+while [[ -e "$SCAN_PATH/brother-scan-$(printf '%03d' "$N").$EXT" ]]; do
+    ((N++))
+done
+
+OUTPUT="$SCAN_PATH/brother-scan-$(printf '%03d' "$N").$EXT"
+TEMP=""
+
+case "$1" in
+    "png")
+        echo "You selected $EXT format."
+        scanimage -d 'brother4:bus2;dev1' --format="$EXT" > "$OUTPUT" &
+        ;;
+    "pdf")
+        echo "You selected $EXT format."
+        TEMP="/tmp/brother-scan-$(printf '%03d' "$N").png"
+        scanimage -d 'brother4:bus2;dev1' --format="png" > "$TEMP" &
+        ;;
+        
+    *)
+        echo "Error: Invalid format '$EXT'. Please choose 'png' or 'pdf'."
+        exit 1
+        ;;
+esac
+
+PID=$!
+
+echo "Scanning → $OUTPUT"
+
+sleep 1
+kill -STOP "$PID"
+sleep 1
+kill -CONT "$PID"
+
+wait "$PID"
+
+if [[ $? -eq 0 ]]; then
+    if [[ "$EXT" == "pdf" ]]; then
+        echo "Scan complete, converting to PDF..."
+
+        if img2pdf "$TEMP" -o "$OUTPUT"; then
+            rm -f "$TEMP"
+            echo "Done: $OUTPUT"
+            exit 0
+        else
+            echo "PDF conversion failed"
+            rm -f "$TEMP"
+            exit 1
+        fi
+    fi
+    echo "Done: $OUTPUT"
+    exit 0
+else
+    echo "Scan failed"
+    rm -f "$OUTPUT"
+    exit 1
+fi
+
